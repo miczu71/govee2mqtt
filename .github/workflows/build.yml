@@ -175,10 +175,17 @@ jobs:
       - name: Build and Publish Home Assistant Add On
         uses: home-assistant/builder@2026.02.1
         with:
+          # --no-cosign-verify skips verifying the *base* image's cosign
+          # signature (home-assistant/*-base-debian:bookworm), which has
+          # been failing with "no signatures found" for everyone building
+          # against it since well before this fork existed -- confirmed
+          # by checking upstream's own PR CI history. --cosign is kept
+          # so our own output image still gets signed.
           args: |
             --amd64 \
             --aarch64 \
             --cosign \
+            --no-cosign-verify \
             --target /data/addon
 
   test-addon:
@@ -213,9 +220,11 @@ jobs:
       - name: Test Build Home Assistant Add On
         uses: home-assistant/builder@2026.02.1
         with:
+          # See the comment on the same flag in the addon job above.
           args: |
             --test \
             --amd64 \
             --aarch64 \
             --cosign \
+            --no-cosign-verify \
             --target /data/addon
