@@ -21,7 +21,7 @@ on:
       - ".dockerignore"
 
 env:
-  IMAGE: ghcr.io/wez/govee2mqtt
+  IMAGE: ghcr.io/miczu71/govee2mqtt
 
 jobs:
   build:
@@ -164,6 +164,13 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Apply tag to version
+        # Use the pushed git tag verbatim as the addon version, so that
+        # addon/config.yaml's version always matches the GitHub release
+        # tag (our fork's tags carry a -miczu71 suffix to stay visually
+        # distinct from upstream's own version strings in the Supervisor
+        # store listing).
+        env:
+          TAG_NAME: ${{ github.ref_name }}
         run: ./scripts/apply-tag.sh
       - name: Build and Publish Home Assistant Add On
         uses: home-assistant/builder@2026.02.1

@@ -47,20 +47,47 @@ upstream issues are still open: #110 and #572. There is a related open PR, #711 
 
 ## Stages (each ends with a checkpoint; I won't start the next one without a go-ahead)
 
-**Stage 0: fork + roadmap in the repo.** `gh repo fork wez/govee2mqtt --clone` to `/config/tools/govee2mqtt`
-(outside `custom_components`, outside HA's git: I'll add it to `.gitignore` in `/config`). Remote `upstream` = wez.
-Write `docs/ROADMAP-retain-availability.md` in the fork (this plan: root cause, decisions, stages) and commit
-it to the fork's main. *Checkpoint:* the fork exists and the roadmap is in it.
+**Stage 0: fork + roadmap in the repo.** ✅ Done. Forked to `miczu71/govee2mqtt`, cloned to
+`/data/home/dev/govee2mqtt` (deviation from the original plan's `/config/tools/govee2mqtt`: this is a
+whole Rust project, not HA config, so it lives outside `/config` entirely rather than being gitignored
+inside it). `upstream` remote = wez. This roadmap committed to the fork's `main`.
 
-**Stage 1: the patch on a clean branch (for upstream).** Branch `fix/retain-availability` from `upstream/main`,
-containing only `src/service/hass.rs`:
-- a `publish_retained` helper (or a `retain` parameter) used only for `availability_topic()`/`"online"` in `register_with_hass`
-- `client.set_last_will(availability_topic(), "offline", QoS::AtMostOnce, true)`
-- a code comment explaining why (the race with HA subscribing)
+**Stage 1: the patch on a clean branch (for upstream).** ✅ Done. Branch `fix/retain-availability` off
+`upstream/main`, `src/service/hass.rs` only: a `publish_retained` helper used for the `online` publish in
+`register_with_hass`, and `set_last_will(..., true)`. PR #1 opened *inside the fork* (branch → miczu71:main).
 
-There's no local Rust (Alpine/musl, and we don't compile locally). Compile + tests run in the fork's CI:
-push the branch → PR *inside the fork* (branch → miczu71:main) → `pr.yml` + `build.yml` (build without push)
-must be green. *Checkpoint:* diff + green CI.
+CI result: `pr.yml` (`cargo build/test/fmt --check`) green. `build.yml`'s `build (linux/amd64)` and
+`build (linux/arm64)` (cross-compile of the actual patched binary) green on 2 consecutive runs.
+`test-addon` failed both times with a cosign "no signatures found" error validating HA's own
+`ghcr.io/home-assistant/{amd64,aarch64}-base-debian:bookworm` images — confirmed pre-existing and
+unrelated: upstream's own PR CI runs have been failing/`action_required` the same way since mid-August
+(checked via `wez/govee2mqtt` Actions history), and this branch never touches `addon/`. Also note:
+`test-addon` doesn't run on a tag push anyway (`if: ! (push && tag)`), so it won't block Stage 2's release.
+**Checkpoint accepted** on the two build jobs. Squash-merged as PR #1.
+
+**One-time manual step surfaced here:** GitHub disables Actions on a freshly forked repo behind a
+browser-only consent banner ("workflows aren't being run on this forked repository") that isn't exposed
+via the REST API or `gh` CLI at all — 0 workflow runs, even after a push/PR, until you click it once on
+https://github.com/miczu71/govee2mqtt/actions. Done by you mid-Stage-1.
+
+**Important finding — upstream's stance on retain (affects Stage 5 only, not Stages 0-4):** the maintainer
+(wez) has twice rejected retain=true fixes on principle — closed PR #452 and PR #581 (a near-identical
+patch to ours) with: *"Retained messages should not be required at all, as home assistant is supposed to
+broadcast a message when it (re)starts... If that is not functioning correctly, I'd rather see some effort
+and a PR that runs that down and resolves that, than turning on retained messages."* He then favored a
+different approach in open PR #711 (debounce the birth/will re-registration handler so overlapping
+`online`/`offline` triggers don't race each other's publishes) — a different race from the one we found
+(subscribe-after-publish ordering, evidenced via HA's MQTT debug info showing entities subscribed but
+missing the `online` message from the registration burst) and one #711's debounce doesn't fix. Decision
+(with the user): **submit the PR anyway with our concrete evidence** — worst case it's closed again like
+#452/#581, at no cost to us; our fork keeps the fix regardless of upstream's decision.
+
+**Stage 2: fork identity + release.** *(in progress)* On the fork's `main`: merge `fix/retain-availability`
+✅, commit the identity changes (Dockerfile/build.yml/config.yaml/build.yaml/repository.yaml/README →
+miczu71, `TAG_NAME: ${{ github.ref_name }}` added to the "Apply tag to version" CI step so
+`addon/config.yaml` version always equals the pushed release tag), then push main → CI publishes
+`ghcr.io/miczu71/govee2mqtt:latest`. Tag+release with `YYYY.MM.DD-<sha8>-miczu71` → the tag job builds
+`ghcr.io/miczu71/govee2mqtt-{amd64,aarch64}:<version>`.
 
 **Stage 2: fork identity + release.** On the fork's `main`: merge `fix/retain-availability`, commit the identity
 changes (the list above), then push main → CI publishes `ghcr.io/miczu71/govee2mqtt:latest`. Bump
