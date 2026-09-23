@@ -1,6 +1,6 @@
 name: Govee to MQTT Bridge (miczu71 fork)
 image: ghcr.io/miczu71/govee2mqtt-{arch}
-version: "2026.03.25-ab9deb66"
+version: "2026.09.23-miczu71"
 slug: govee2mqtt
 description: Control Govee Devices. Fork of wez/govee2mqtt with retained MQTT availability (fixes entities staying unavailable after a Home Assistant restart) -- see https://github.com/miczu71/govee2mqtt/blob/main/docs/ROADMAP-retain-availability.md
 url: https://github.com/miczu71/govee2mqtt
