@@ -111,15 +111,20 @@ pullable (anonymous GHCR token, HTTP 200 on the manifest); `main`'s `addon/confi
 [GitHub release](https://github.com/miczu71/govee2mqtt/releases/tag/2026.09.23-miczu71) published (not
 draft). *Checkpoint met.*
 
-**Stage 3: switching the app (with a rollback option).** Through the MCP: add the repository
-`https://github.com/miczu71/govee2mqtt` to Supervisor → install the fork app → copy the options from the current
-app (API key, MQTT host/port/user/pass, temperature_scale) → **stop the upstream app and set boot=manual (don't
-uninstall it: that's the rollback)** → start the fork. Tests:
-1. `light.lampa_kuchnia` is available and the lamp responds (on/off)
-2. `mosquitto_sub --retained-only gv2mqtt/availability` → `online` (retained)
-3. stop the fork app → the retained value changes to `offline` and the entities go `unavailable` → start → `online`
+**Stage 3: switching the app (with a rollback option).** ✅ Done. Repository `dfa4e9b3` added, app
+`dfa4e9b3_govee2mqtt` installed (no slug collision with upstream's `b9845f46_govee2mqtt`), options copied
+(temperature_scale, govee_api_key, mqtt_host/port/username/password) and `watchdog` matched to upstream's
+`true` (`auto_update` deliberately left `false` — we review releases before Supervisor jumps to them).
+Upstream stopped and `boot: manual` (installed, not uninstalled — the rollback). Fork started.
 
-*Checkpoint:* all 3 tests pass. Rollback = stop the fork, start upstream.
+All 3 tests passed, verified directly against the broker and the entity, not just inferred from logs:
+1. `light.lampa_kuchnia` → `off` (available) after the fork's registration burst.
+2. `mosquitto_sub --retained-only gv2mqtt/availability` → `online`, delivered instantly on subscribe —
+   confirms retain is actually taking effect, not just that the app happened to be up when checked.
+3. Stopped the fork → retained value flipped to `offline`, entity → `unavailable` (both confirmed) →
+   started it again → retained `online`, entity → `off` again. Full round-trip, both directions verified.
+
+*Checkpoint met.* Rollback = stop the fork, start upstream (still installed, `boot: manual`).
 
 **Stage 4: real-world test: an HA restart (done by you, I don't restart HA).** After the restart, without any
 manual step: the lamp is available within ~1 min of startup, the MQTT debug info shows a retained `online`
