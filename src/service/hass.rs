@@ -128,9 +128,16 @@ impl HassClient {
         );
         tokio::time::sleep(delay).await;
 
-        // Mark as available
+        // Mark as available.
+        // This is retained (unlike our other publishes) so that if hass
+        // is slow to (re)subscribe to the availability topic around a
+        // restart, it still observes us as online once it does subscribe,
+        // rather than only catching the "online" message if its
+        // subscription happens to race ahead of this publish. See
+        // <https://github.com/wez/govee2mqtt/issues/110> and
+        // <https://github.com/wez/govee2mqtt/issues/572>.
         log::trace!("register_with_hass: mark as online");
-        self.publish(availability_topic(), "online")
+        self.publish_retained(availability_topic(), "online")
             .await
             .context("online -> availability_topic")?;
 
@@ -151,6 +158,25 @@ impl HassClient {
         log::trace!("{topic} -> {payload}");
         self.client
             .publish(topic, payload, QoS::AtMostOnce, false)
+            .await?;
+        Ok(())
+    }
+
+    /// Like `publish`, but sets the MQTT retain flag so that the broker
+    /// holds on to the message and delivers it immediately to any client
+    /// that subscribes to the topic afterwards, rather than only to
+    /// clients that were already subscribed at publish time.
+    pub async fn publish_retained<
+        T: AsRef<str> + std::fmt::Display,
+        P: AsRef<[u8]> + std::fmt::Display,
+    >(
+        &self,
+        topic: T,
+        payload: P,
+    ) -> anyhow::Result<()> {
+        log::trace!("{topic} -> {payload} (retained)");
+        self.client
+            .publish(topic, payload, QoS::AtMostOnce, true)
             .await?;
         Ok(())
     }
@@ -629,7 +655,11 @@ pub async fn spawn_hass_integration(
     let mqtt_password = args.mqtt_password()?;
     let mqtt_port = args.mqtt_port()?;
 
-    client.set_last_will(availability_topic(), "offline", QoS::AtMostOnce, false)?;
+    // Retained (see the comment on the "online" publish in
+    // register_with_hass): the broker keeps serving "offline" to new
+    // subscribers for as long as we're disconnected, instead of only
+    // to clients that were already subscribed when the will fired.
+    client.set_last_will(availability_topic(), "offline", QoS::AtMostOnce, true)?;
 
     if mqtt_username.is_some() != mqtt_password.is_some() {
         log::error!(
