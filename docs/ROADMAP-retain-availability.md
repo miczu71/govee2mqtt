@@ -82,20 +82,34 @@ missing the `online` message from the registration burst) and one #711's debounc
 (with the user): **submit the PR anyway with our concrete evidence** — worst case it's closed again like
 #452/#581, at no cost to us; our fork keeps the fix regardless of upstream's decision.
 
-**Stage 2: fork identity + release.** *(in progress)* On the fork's `main`: merge `fix/retain-availability`
-✅, commit the identity changes (Dockerfile/build.yml/config.yaml/build.yaml/repository.yaml/README →
-miczu71, `TAG_NAME: ${{ github.ref_name }}` added to the "Apply tag to version" CI step so
-`addon/config.yaml` version always equals the pushed release tag), then push main → CI publishes
-`ghcr.io/miczu71/govee2mqtt:latest`. Tag+release with `YYYY.MM.DD-<sha8>-miczu71` → the tag job builds
-`ghcr.io/miczu71/govee2mqtt-{amd64,aarch64}:<version>`.
+**Stage 2: fork identity + release.** ✅ Done. Identity commit (Dockerfile ×2/build.yml/config.yaml/
+build.yaml/repository.yaml/README/docker-compose.yml → miczu71) pushed to `main`, publishing
+`ghcr.io/miczu71/govee2mqtt:latest` (binary image). Deviations from the original plan, in order hit:
 
-**Stage 2: fork identity + release.** On the fork's `main`: merge `fix/retain-availability`, commit the identity
-changes (the list above), then push main → CI publishes `ghcr.io/miczu71/govee2mqtt:latest`. Bump
-`addon/config.yaml` version = `2026.MM.DD-<sha8>-miczu71` → **published** GH release with the same tag and full
-release notes → the tag job builds `ghcr.io/miczu71/govee2mqtt-{amd64,aarch64}:<version>`.
-**Manual step for you:** GHCR creates new packages as *private* and there's no API to change that. In GitHub →
-Packages, set `govee2mqtt`, `govee2mqtt-amd64` and `govee2mqtt-aarch64` to **Public** so Supervisor can pull them.
-*Checkpoint:* the image tags exist and are public (`docker manifest`/`gh api` check).
+- **GHCR packages turned out public by default** this time (anonymous-token manifest fetch returned 200
+  right away) — the plan's "manual step: set packages Public in GitHub UI" wasn't needed.
+- **The `addon` release job failed** with `Error: no signatures found` / `Invalid base image
+  ghcr.io/home-assistant/{amd64,aarch64}-base-debian:bookworm` — `home-assistant/builder`'s `--cosign`
+  flag also verifies HA's own base-image signature, and that verification is currently broken for
+  everyone (confirmed: `wez/govee2mqtt`'s own Container Build runs have been failing/`action_required`
+  the same way since mid-August, before this fork existed). Fixed by adding `--no-cosign-verify` (added
+  upstream in `home-assistant/builder@2025.09.0`, present in our pinned `2026.02.1`) to skip *only* the
+  base-image check; `--cosign` stays on so our own output image is still signed. Flagged by the safety
+  classifier as disabling verification (reasonable, out of context) — surfaced to the user, approved,
+  applied.
+- **`TAG_NAME: ${{ github.ref_name }}` didn't get main's `addon/config.yaml` version updated** — it only
+  patches the file inside the ephemeral tag-triggered checkout that `home-assistant/builder` reads from,
+  never commits back. Supervisor reads `main`'s `config.yaml` when it adds the repo, so that has to carry
+  the real version too. Fixed by following upstream's own pattern (their `9158353 "Tag
+  2026.03.25-ab9deb66"` commit): bump `version:` on `main` first, tag with the identical string, retag
+  after the cosign fix. Landed on **`2026.09.23-miczu71`** (dropped the `-<sha8>` — date+suffix is
+  distinct enough from upstream's own version strings for a single low-frequency fork, and sidesteps the
+  chicken-and-egg of a commit needing to know its own future short hash).
+
+Final state, verified: `ghcr.io/miczu71/govee2mqtt-{amd64,aarch64}:2026.09.23-miczu71` both public and
+pullable (anonymous GHCR token, HTTP 200 on the manifest); `main`'s `addon/config.yaml` version matches;
+[GitHub release](https://github.com/miczu71/govee2mqtt/releases/tag/2026.09.23-miczu71) published (not
+draft). *Checkpoint met.*
 
 **Stage 3: switching the app (with a rollback option).** Through the MCP: add the repository
 `https://github.com/miczu71/govee2mqtt` to Supervisor → install the fork app → copy the options from the current
